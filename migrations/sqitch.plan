@@ -1,0 +1,4 @@
+%syntax-version=1.0.0
+%project=busman
+
+0001_init 2023-11-06T21:10:00Z Matti Eiden <snaipperi@gmail.com> # Initialize the DB
