@@ -15,6 +15,8 @@ from busrouter.router import (
     UnsubscribeRequest,
     NokResponse,
     UnsubscribeAllRequest,
+    PublishRequest,
+    PublishResponse,
 )
 
 
@@ -137,6 +139,34 @@ async def test_unsubscribe_all_request():
     await request_queue.put((response_queue, UnsubscribeAllRequest()))
     response = await response_queue.get()
     assert isinstance(response, OkResponse)
+
+    router.cancel()
+    try:
+        await router
+    except CancelledError:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_publish():
+    request_queue = Queue()
+    pub_response_queue = Queue()
+    sub_response_queue = Queue()
+    router = asyncio.create_task(route(request_queue))
+    sub_topic = "pubtest/+/topic"
+    pub_topic = "pubtest/something/topic"
+
+    message = b"testmsg"
+
+    await request_queue.put((sub_response_queue, SubscribeRequest(sub_topic)))
+    assert isinstance(await sub_response_queue.get(), OkResponse)
+    await request_queue.put((pub_response_queue, PublishRequest(pub_topic, message)))
+    assert isinstance(await pub_response_queue.get(), OkResponse)
+
+    response = await sub_response_queue.get()
+    assert isinstance(response, PublishResponse)
+    assert response.topic == pub_topic
+    assert response.message == message
 
     router.cancel()
     try:

@@ -1,8 +1,7 @@
+import logging
 from asyncio import Queue
 from collections import defaultdict
-from functools import cache, lru_cache
-from random import random
-import logging
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +180,7 @@ async def route(request_queue: Queue[tuple[Queue, Request]]):
         match request:
             case PublishRequest(topic, message):
                 await publish(topic_to_queues, topic, message)
+                await response_queue.put(OkResponse())
 
             case SubscribeRequest(topic):
                 add_route(topic_to_queues, queue_to_topics, response_queue, topic)
@@ -201,11 +201,3 @@ async def route(request_queue: Queue[tuple[Queue, Request]]):
                     await response_queue.put(OkResponse())
 
         request_queue.task_done()
-
-
-class Router:
-    def __init__(self, request_queue: Queue):
-        pass
-
-    def subscribe(self, topic, transport):
-        pass
