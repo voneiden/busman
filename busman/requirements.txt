@@ -10,10 +10,15 @@ django==4.2.7
     # via
     #   -r requirements.in
     #   django-netfields
+    #   djangorestframework
 django-netfields==1.3.1
+    # via -r requirements.in
+djangorestframework==3.14.0
     # via -r requirements.in
 netaddr==0.9.0
     # via django-netfields
+pytz==2023.3.post1
+    # via djangorestframework
 six==1.16.0
     # via django-netfields
 sqlparse==0.4.4
