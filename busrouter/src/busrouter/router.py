@@ -185,10 +185,12 @@ async def route(request_queue: Queue[tuple[Queue, Request]]):
             case SubscribeRequest(topic):
                 add_route(topic_to_queues, queue_to_topics, response_queue, topic)
                 await response_queue.put(OkResponse())
+
             case UnsubscribeAllRequest(skip_response):
                 remove_routes(topic_to_queues, queue_to_topics, response_queue)
                 if not skip_response:
                     await response_queue.put(OkResponse())
+
             case UnsubscribeRequest(topic):
                 try:
                     remove_route(

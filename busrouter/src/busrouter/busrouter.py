@@ -8,6 +8,7 @@ from asyncio import (
     StreamWriter,
 )
 
+from busrouter.mapper import mapper
 from router import (
     NokResponse,
     OkResponse,
@@ -19,6 +20,7 @@ from router import (
     Response,
     SubscribeRequest,
     UnsubscribeRequest,
+    route,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,6 +133,13 @@ async def main():
     )
 
     request_queue = Queue()
+
+    logging.info("Starting router...")
+    route_task = asyncio.create_task(route(request_queue))
+    # TODO handle cancel
+
+    mapper_task = asyncio.create_task(mapper(request_queue))
+    # TODO handle cancel
 
     HOST = "0.0.0.0"
     PORT = 42069
