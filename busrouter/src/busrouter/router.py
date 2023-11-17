@@ -83,6 +83,10 @@ class PingResponse(Response):
     pass
 
 
+ResponseQueue = Queue[Response]
+RequestQueue = Queue[tuple[ResponseQueue, Request]]
+
+
 def length_prefixed_to_bytes(b: bytes) -> tuple[bytes, bytes]:
     length = int.from_bytes(b[0:1], "big")
     data = b[1 : 1 + length]
@@ -220,7 +224,7 @@ async def publish(route_map, topic, message):
                 tg.create_task(response_queue.put(response))
 
 
-async def route(request_queue: Queue[tuple[Queue, Request]]):
+async def route(request_queue: RequestQueue):
     route_map = RouteSegment()
 
     while 1:

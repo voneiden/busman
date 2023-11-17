@@ -8,7 +8,14 @@ from busrouter import settings
 
 logger = logging.getLogger(__name__)
 
-from busrouter.router import SubscribeRequest, UnsubscribeAllRequest
+from busrouter.router import (
+    Request,
+    RequestQueue,
+    Response,
+    ResponseQueue,
+    SubscribeRequest,
+    UnsubscribeAllRequest,
+)
 
 
 class SetupError(Exception):
@@ -33,8 +40,8 @@ async def setup(request_queue: Queue, response_queue: Queue):
         # TODO check response
 
 
-async def mapper(request_queue: Queue):
-    response_queue = Queue()
+async def mapper(request_queue: RequestQueue):
+    response_queue: ResponseQueue = Queue()
     while 1:
         try:
             mapping = await setup(request_queue, response_queue)

@@ -17,7 +17,9 @@ from busrouter.router import (
     PublishRequest,
     PublishResponse,
     Request,
+    RequestQueue,
     Response,
+    ResponseQueue,
     SubscribeRequest,
     UnsubscribeRequest,
     route,
@@ -100,9 +102,9 @@ async def handle_device_request(request_queue, response_queue, reader):
                 raise CloseConnection()
 
 
-def handle_device_factory(request_queue: Queue[tuple[Queue, Request]]):
+def handle_device_factory(request_queue: RequestQueue):
     async def handle_device(reader: StreamReader, writer: StreamWriter):
-        response_queue = Queue()
+        response_queue: ResponseQueue = Queue()
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(handle_device_response(response_queue, writer))
