@@ -39,6 +39,6 @@ async def mapper(request_queue: Queue):
         try:
             mapping = await setup(request_queue, response_queue)
             break
-        except None:
+        except ValueError:
             logger.warning("Failed to get mapping... will retry.")
             await asyncio.sleep(1)

@@ -9,7 +9,7 @@ from asyncio import (
 )
 
 from busrouter.mapper import mapper
-from router import (
+from busrouter.router import (
     NokResponse,
     OkResponse,
     PingResponse,
@@ -20,8 +20,9 @@ from router import (
     Response,
     SubscribeRequest,
     UnsubscribeRequest,
-    route,
 )
+
+from busrouter.route_poc import route
 
 logger = logging.getLogger(__name__)
 
@@ -69,55 +70,54 @@ class CloseConnection(Exception):
     pass
 
 
+async def handle_device_request(request_queue, response_queue, reader):
+    while 1:
+        cmd = await reader.readexactly(1)
+        logging.debug(f"Recv cmd: {cmd}")
+        match cmd:
+            case Request.SUBSCRIBE:
+                topic = await read_length_prefixed_value(reader)
+                await request_queue.put(
+                    (response_queue, SubscribeRequest(topic.decode("ascii")))
+                )
+            case Request.UNSUBSCRIBE:
+                topic = await read_length_prefixed_value(reader)
+                await request_queue.put(
+                    (response_queue, UnsubscribeRequest(topic.decode("ascii")))
+                )
+            case Request.PUBLISH:
+                topic = await read_length_prefixed_value(reader)
+                message = await read_length_prefixed_value(reader)
+                await request_queue.put(
+                    (
+                        response_queue,
+                        PublishRequest(topic.decode("ascii"), message),
+                    )
+                )
+            case Request.PONG:
+                await request_queue.put((response_queue, PongRequest()))
+            case _:
+                logging.warning("Bad command, disconnect")
+                raise CloseConnection()
+
+
 def handle_device_factory(request_queue: Queue[tuple[Queue, Request]]):
     async def handle_device(reader: StreamReader, writer: StreamWriter):
         response_queue = Queue()
-        response_handler_task = asyncio.create_task(
-            handle_device_response(response_queue, writer)
-        )
         try:
-            while 1:
-                cmd = await reader.readexactly(1)
-                logging.debug(f"Recv cmd: {cmd}")
-                match cmd:
-                    case Request.SUBSCRIBE:
-                        topic = await read_length_prefixed_value(reader)
-                        await request_queue.put(
-                            (response_queue, SubscribeRequest(topic.decode("ascii")))
-                        )
-                    case Request.UNSUBSCRIBE:
-                        topic = await read_length_prefixed_value(reader)
-                        await request_queue.put(
-                            (response_queue, UnsubscribeRequest(topic.decode("ascii")))
-                        )
-                    case Request.PUBLISH:
-                        topic = await read_length_prefixed_value(reader)
-                        message = await read_length_prefixed_value(reader)
-                        await request_queue.put(
-                            (
-                                response_queue,
-                                PublishRequest(topic.decode("ascii"), message),
-                            )
-                        )
-                    case Request.PONG:
-                        await request_queue.put((response_queue, PongRequest()))
-                    case _:
-                        logging.warning("Bad command, disconnect")
-                        raise CloseConnection()
-        except CloseConnection:
-            logging.debug("Connection close requested")
-        except IncompleteReadError:
+            async with asyncio.TaskGroup() as tg:
+                tg.create_task(handle_device_response(response_queue, writer))
+                tg.create_task(
+                    handle_device_request(request_queue, response_queue, reader)
+                )
+        except* CloseConnection:
+            pass
+        except* IncompleteReadError:
             logging.warning("Incomplete read error!")
         finally:
-            # TODO disconnect request
-            response_handler_task.cancel()
+            logger.info("Closing connection")
             writer.close()
             await writer.wait_closed()
-            logging.debug("Writer closed")
-            try:
-                await response_handler_task
-            except CancelledError:
-                logging.debug("Response handler cancelled")
 
     return handle_device
 
@@ -138,7 +138,7 @@ async def main():
     route_task = asyncio.create_task(route(request_queue))
     # TODO handle cancel
 
-    mapper_task = asyncio.create_task(mapper(request_queue))
+    # mapper_task = asyncio.create_task(mapper(request_queue))
     # TODO handle cancel
 
     HOST = "0.0.0.0"

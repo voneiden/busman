@@ -71,6 +71,7 @@ class NokResponse(Response):
 
 class PublishResponse(Response):
     __slots__ = ("topic", "message")
+    __match_args__ = ("topic", "message")
 
     def __init__(self, topic: str, message: bytes):
         self.topic = topic

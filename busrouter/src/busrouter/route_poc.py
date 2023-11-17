@@ -1,6 +1,17 @@
 # So here's an interesting idea: to build a hash tree of the routes
+import asyncio
 from asyncio import Queue
 from collections import defaultdict
+
+from busrouter.router import (
+    Request,
+    PublishRequest,
+    PublishResponse,
+    OkResponse,
+    SubscribeRequest,
+    UnsubscribeAllRequest,
+    UnsubscribeRequest,
+)
 
 
 class RouteSegment(defaultdict):
@@ -35,9 +46,6 @@ class RouteSegment(defaultdict):
         return not len(self.routes)
 
 
-route_map = defaultdict(RouteSegment)
-
-
 class RouteChangeError(Exception):
     pass
 
@@ -70,6 +78,11 @@ def remove_route(route_map, topic: str, queue: Queue):
     return _change_route(route_map, topic.split("/"), queue, False)
 
 
+def remove_routes(route_map, queue):
+    # TODO
+    return
+
+
 def _match_route(route_segment, topic: list[str]):
     match topic:
         case ["#"]:
@@ -93,3 +106,40 @@ def _match_route(route_segment, topic: list[str]):
 
 def match_route(route_map, topic: str):
     return _match_route(route_map, topic.split("/"))
+
+
+async def publish(route_map, topic, message):
+    routes = match_route(route_map, topic)
+    if routes:
+        response = PublishResponse(topic, message)
+        async with asyncio.TaskGroup() as tg:
+            for response_queue in routes:
+                tg.create_task(response_queue.put(response))
+
+
+async def route(request_queue: Queue[tuple[Queue, Request]]):
+    route_map = RouteSegment()
+
+    while 1:
+        response_queue, request = await request_queue.get()
+        match request:
+            case PublishRequest(topic, message):
+                await publish(route_map, topic, message)
+                await response_queue.put(OkResponse())
+
+            case SubscribeRequest(topic):
+                add_route(route_map, topic, response_queue)
+                await response_queue.put(OkResponse())
+
+            case UnsubscribeAllRequest(skip_response):
+                remove_routes(route_map, response_queue)
+                if not skip_response:
+                    await response_queue.put(OkResponse())
+
+            case UnsubscribeRequest(topic):
+                # TODO errors
+                remove_route(route_map, topic, response_queue)
+                # await response_queue.put(NokResponse())
+                await response_queue.put(OkResponse())
+
+        request_queue.task_done()
