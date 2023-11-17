@@ -37,7 +37,7 @@ def bytes_to_length_prefixed_bytes(b: bytes) -> bytes:
     return len(b).to_bytes(1) + b
 
 
-async def handle_device_response(response_queue, writer: StreamWriter):
+async def handle_device_response(response_queue: ResponseQueue, writer: StreamWriter):
     while 1:
         response = await response_queue.get()
         match response:
@@ -71,7 +71,9 @@ class CloseConnection(Exception):
     pass
 
 
-async def handle_device_request(request_queue, response_queue, reader):
+async def handle_device_request(
+    request_queue: RequestQueue, response_queue: ResponseQueue, reader
+):
     while 1:
         cmd = await reader.readexactly(1)
         logging.debug(f"Recv cmd: {cmd}")
