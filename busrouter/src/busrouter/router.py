@@ -204,8 +204,12 @@ def _match_route(route_segment, topic: list[str]):
             return route_segment.collect(segment)
         case [segment, *rest]:
             routes = []
-            for segment_fork in [f for f in [segment, "+", "#"] if f in route_segment]:
-                routes += _match_route(route_segment[segment_fork], rest)
+            if "#" in route_segment:
+                routes += route_segment["#"].routes
+            if "+" in route_segment:
+                routes += _match_route(route_segment["+"], rest)
+            if segment in route_segment:
+                routes += _match_route(route_segment[segment], rest)
             return routes
         case _:
             raise RouteMatchError(f"Unable to handle topic: {topic}")

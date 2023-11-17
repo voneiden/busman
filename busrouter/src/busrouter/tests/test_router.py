@@ -20,15 +20,30 @@ from busrouter.router import (
 )
 
 
-def test_match_route():
+@pytest.mark.parametrize(
+    "sub,pub,matches",
+    [
+        ["hello", "hello", True],
+        ["hello/world", "hello/world", True],
+        ["hello", "hello/world", False],
+        ["hello/world", "hello", False],
+        ["something/else", "#", True],
+        ["#", "something/else", True],
+        ["#", "#", True],
+        ["#", "+", True],
+        ["hello/+/world", "hello/nice/world", True],
+        ["hello/nice/world", "hello/+/world", True],
+        ["hello/+/world", "hello/nice/not", False],
+    ],
+)
+def test_match_route(sub, pub, matches):
     route_map = RouteSegment()
     queue = object()
-    add_route(route_map, "hello/world", queue)
-
-    assert match_route(route_map, "hello/world") == [queue]
-    assert match_route(route_map, "hello/worl") == []
-    assert match_route(route_map, "hello/+") == [queue]
-    assert match_route(route_map, "#") == [queue]
+    add_route(route_map, sub, queue)
+    if matches:
+        assert match_route(route_map, pub) == [queue]
+    else:
+        assert match_route(route_map, pub) == []
 
 
 def test_add_route():
