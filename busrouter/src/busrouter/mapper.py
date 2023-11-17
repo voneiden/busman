@@ -30,12 +30,13 @@ async def setup(request_queue: Queue, response_queue: Queue):
         raise SetupError(f"Request failed, status: {result.status_code}")
 
     await request_queue.put((response_queue, UnsubscribeAllRequest()))
-    result = await response_queue.get()
-    # Check result
+    await response_queue.get()
+    # TODO Check result
 
-    mapping = result.json()["data"]
-    for source_topic, sink_topic in mapping.items():
-        await request_queue.put((response_queue, SubscribeRequest(source_topic)))
+    mappings = result.json()
+    for mapping in mappings:
+        source, sink = mapping["source"], mapping["sink"]
+        await request_queue.put((response_queue, SubscribeRequest(source)))
         response = await response_queue.get()
         # TODO check response
 

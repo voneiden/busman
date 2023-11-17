@@ -141,7 +141,7 @@ async def main():
     route_task = asyncio.create_task(route(request_queue))
     # TODO handle cancel
 
-    # mapper_task = asyncio.create_task(mapper(request_queue))
+    mapper_task = asyncio.create_task(mapper(request_queue))
     # TODO handle cancel
 
     HOST = "0.0.0.0"
@@ -150,8 +150,12 @@ async def main():
         handle_device_factory(request_queue), HOST, PORT
     )
     logging.info(f"Serving @ {HOST}:{PORT}")
-    async with server:
-        await server.serve_forever()
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(route(request_queue))
+        tg.create_task(mapper(request_queue))
+        tg.create_task(server.serve_forever())
+    # async with server:
+    #    await server.serve_forever()
 
 
 try:
