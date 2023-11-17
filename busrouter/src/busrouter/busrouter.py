@@ -20,9 +20,8 @@ from busrouter.router import (
     Response,
     SubscribeRequest,
     UnsubscribeRequest,
+    route,
 )
-
-from busrouter.route_poc import route
 
 logger = logging.getLogger(__name__)
 

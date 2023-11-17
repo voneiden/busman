@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from asyncio import Queue
 from collections import defaultdict
@@ -96,109 +97,154 @@ def length_prefixed_to_str(b: bytes) -> tuple[str, bytes]:
     return data.decode("ascii"), rest
 
 
-def _match_topic(sub_topic: list[str], pub_topic: list[str]):
-    match (sub_topic, pub_topic):
-        case [["#", *_], _]:
-            return True
-        case [["+", *sub_rest], [_, *pub_rest]]:
-            return _match_topic(sub_rest, pub_rest)
-        case [[sub, *sub_rest], [pub, *pub_rest]] if sub == pub:
-            return _match_topic(sub_rest, pub_rest)
-        case [[], []]:
-            return True
-        case _:
-            return False
+class RouteSegment(defaultdict):
+    def __init__(self, **kwargs):
+        super().__init__(lambda: RouteSegment(**kwargs), **kwargs)
+        self.routes = []
+
+    def add_route(self, key: str, queue: Queue):
+        self[key].routes.append(queue)
+
+    def remove_route(self, key: str, queue: Queue):
+        try:
+            self[key].routes.remove(queue)
+        except ValueError:
+            raise RouteChangeError("Queue was not in route")
+        finally:
+            if self[key].is_empty:
+                del self[key]
+
+    def change_route(self, key: str, queue: Queue, add: bool):
+        if add:
+            return self.add_route(key, queue)
+        else:
+            return self.remove_route(key, queue)
+
+    def collect(self, segment):
+        routes = []
+        if segment in self:
+            routes += self[segment].routes
+        if "+" in self:
+            routes += self["+"].routes
+        if "#" in self:
+            routes += self["#"].routes
+        return routes
+
+    def collect_all(self, recursive=False):
+        routes = []
+        for key in self.keys():
+            routes += self[key].routes
+            if recursive:
+                routes += self[key].collect_all(recursive=True)
+        return routes
+
+    def remove_routes(self, queue: Queue):
+        for key in self.keys():
+            if queue in self[key].routes:
+                self[key].routes.remove(queue)
+            self[key].remove_routes(queue)
+
+    @property
+    def is_empty(self):
+        return not len(self.routes)
 
 
-@lru_cache(1024)
-def match_topic(sub_topic: str, pub_topic: str):
-    """
-    Oce the lru_cache is warm, it's about 24x faster for
-    a topic with three words.
-    """
-    sub_topic = sub_topic.split("/")
-    pub_topic = pub_topic.split("/")
-    return _match_topic(sub_topic, pub_topic)
-
-
-def remove_routes(topic_to_queues, queue_to_topics, queue):
-    if queue not in queue_to_topics:
-        return
-
-    topics = queue_to_topics[queue]
-    del queue_to_topics[queue]
-
-    for topic in topics:
-        topic_queues = topic_to_queues[topic]
-        topic_queues.remove(queue)
-        if len(topic_queues) == 0:
-            del topic_to_queues[topic]
-
-    return
-
-
-class RemoveRouteError(Exception):
+class RouteChangeError(Exception):
     pass
 
 
-def remove_route(topic_to_queues, queue_to_topics, queue, topic):
-    if queue not in queue_to_topics:
-        raise RemoveRouteError("Queue is not subscribed to anything")
-
-    queue_topics = queue_to_topics[queue]
-    if topic not in queue_topics:
-        raise RemoveRouteError("Queue is not subscribed to topic")
-
-    queue_topics.remove(topic)
-    if len(queue_topics) == 0:
-        del queue_to_topics[queue]
-
-    topic_queues = topic_to_queues[topic]
-    topic_queues.remove(queue)
-    if len(topic_queues) == 0:
-        del topic_to_queues[topic]
+class RouteMatchError(Exception):
+    pass
 
 
-def add_route(topic_to_queues, queue_to_topics, queue, topic):
-    topic_to_queues[topic].append(queue)
-    queue_to_topics[queue].append(topic)
+def _change_route(route_segment, topic: list[str], queue: Queue, add: bool):
+    match topic:
+        case ["#"]:
+            return route_segment.change_route("#", queue, add)
+        case ["+"]:
+            return route_segment.change_route("+", queue, add)
+        case ["+", *rest]:
+            return _change_route(route_segment["+"], rest, queue, add)
+        case [segment]:
+            return route_segment.change_route(segment, queue, add)
+        case [segment, *rest]:
+            return _change_route(route_segment[segment], rest, queue, add)
+        case _:
+            raise RouteChangeError(f"Unable to handle topic: {topic}")
 
 
-async def publish(topic_to_queues, pub_topic, message):
-    response = PublishResponse(pub_topic, message)
-    for sub_topic, queues in topic_to_queues.items():
-        if match_topic(sub_topic, pub_topic):
-            for queue in queues:
-                await queue.put(response)
+def add_route(route_map, topic: str, queue: Queue):
+    return _change_route(route_map, topic.split("/"), queue, True)
+
+
+def remove_route(route_map, topic: str, queue: Queue):
+    return _change_route(route_map, topic.split("/"), queue, False)
+
+
+def remove_routes(route_map, queue):
+    return route_map.remove_routes(queue)
+
+
+def _match_route(route_segment, topic: list[str]):
+    match topic:
+        case ["#"]:
+            return route_segment.collect_all(recursive=True)
+        case ["+"]:
+            return route_segment.collect_all()
+        case ["+", *rest]:
+            routes = []
+            for segment in route_segment.keys():
+                routes += _match_route(route_segment[segment], rest)
+            return routes
+        case [segment]:
+            return route_segment.collect(segment)
+        case [segment, *rest]:
+            routes = []
+            for segment_fork in [f for f in [segment, "+", "#"] if f in route_segment]:
+                routes += _match_route(route_segment[segment_fork], rest)
+            return routes
+        case _:
+            raise RouteMatchError(f"Unable to handle topic: {topic}")
+
+
+def match_route(route_map, topic: str):
+    return _match_route(route_map, topic.split("/"))
+
+
+async def publish(route_map, topic, message):
+    routes = match_route(route_map, topic)
+    if routes:
+        response = PublishResponse(topic, message)
+        async with asyncio.TaskGroup() as tg:
+            for response_queue in routes:
+                tg.create_task(response_queue.put(response))
 
 
 async def route(request_queue: Queue[tuple[Queue, Request]]):
-    topic_to_queues: dict[str, list[Queue]] = defaultdict(list)
-    queue_to_topics: dict[Queue, list[str]] = defaultdict(list)
+    route_map = RouteSegment()
 
     while 1:
         response_queue, request = await request_queue.get()
         match request:
             case PublishRequest(topic, message):
-                await publish(topic_to_queues, topic, message)
+                await publish(route_map, topic, message)
                 await response_queue.put(OkResponse())
 
             case SubscribeRequest(topic):
-                add_route(topic_to_queues, queue_to_topics, response_queue, topic)
+                add_route(route_map, topic, response_queue)
                 await response_queue.put(OkResponse())
 
             case UnsubscribeAllRequest(skip_response):
-                remove_routes(topic_to_queues, queue_to_topics, response_queue)
+                remove_routes(route_map, response_queue)
                 if not skip_response:
                     await response_queue.put(OkResponse())
 
             case UnsubscribeRequest(topic):
+                # TODO errors
                 try:
-                    remove_route(
-                        topic_to_queues, queue_to_topics, response_queue, topic
-                    )
-                except RemoveRouteError as ex:
-                    logger.warning("Failed to remove route:", exc_info=ex)
+                    remove_route(route_map, topic, response_queue)
+                except RouteChangeError as ex:
+                    logger.info("Failed to change route", exc_info=ex)
                     await response_queue.put(NokResponse())
                 else:
                     await response_queue.put(OkResponse())

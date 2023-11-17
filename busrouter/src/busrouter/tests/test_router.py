@@ -1,94 +1,68 @@
 import asyncio
-from asyncio import Queue, CancelledError
-from collections import defaultdict
+from asyncio import CancelledError, Queue
 
 import pytest
 
 from busrouter.router import (
-    match_topic,
+    NokResponse,
+    OkResponse,
+    PublishRequest,
+    PublishResponse,
+    RouteSegment,
+    SubscribeRequest,
+    UnsubscribeAllRequest,
+    UnsubscribeRequest,
     add_route,
+    match_route,
     remove_route,
     remove_routes,
     route,
-    SubscribeRequest,
-    OkResponse,
-    UnsubscribeRequest,
-    NokResponse,
-    UnsubscribeAllRequest,
-    PublishRequest,
-    PublishResponse,
 )
 
 
-def test_match_topic():
-    topic1 = "hello"
-    topic2 = "hello/world"
-    assert match_topic(topic1, topic1)
-    assert match_topic(topic2, topic2)
-    assert not match_topic(topic1, topic2)
-    assert not match_topic(topic2, topic1)
+def test_match_route():
+    route_map = RouteSegment()
+    queue = object()
+    add_route(route_map, "hello/world", queue)
 
-
-def test_match_topic_single_wildcard():
-    sub_topic = "hello/+/world"
-    ok_pub_topic = "hello/foo/world"
-    nok_pub_topic = "hello/world"
-    nok_pub_topic2 = "hello/bar/world/thing"
-
-    assert match_topic(sub_topic, ok_pub_topic)
-    assert not match_topic(sub_topic, nok_pub_topic)
-    assert not match_topic(sub_topic, nok_pub_topic2)
-
-
-def test_match_topic_full_wildcard():
-    sub_topic1 = "#"
-    sub_topic2 = "hello/#"
-    pub_topic1 = "hello/world"
-    pub_topic2 = "world/hello"
-
-    assert match_topic(sub_topic1, pub_topic1)
-    assert match_topic(sub_topic1, pub_topic2)
-    assert match_topic(sub_topic2, pub_topic1)
-    assert not match_topic(sub_topic2, pub_topic2)
+    assert match_route(route_map, "hello/world") == [queue]
+    assert match_route(route_map, "hello/worl") == []
+    assert match_route(route_map, "hello/+") == [queue]
+    assert match_route(route_map, "#") == [queue]
 
 
 def test_add_route():
-    topic_to_queues = defaultdict(list)
-    queue_to_topics = defaultdict(list)
+    route_map = RouteSegment()
     queue = object()
     topic = "hello/world"
-    add_route(topic_to_queues, queue_to_topics, queue, topic)
-    assert topic in topic_to_queues
-    assert topic_to_queues[topic] == [queue]
-    assert queue in queue_to_topics
-    assert queue_to_topics[queue] == [topic]
+    add_route(route_map, topic, queue)
+
+    assert "hello" in route_map
+    assert "world" in route_map["hello"]
+    assert route_map["hello"]["world"].routes == [queue]
 
 
 def test_remove_route():
-    topic_to_queues = defaultdict(list)
-    queue_to_topics = defaultdict(list)
+    route_map = RouteSegment()
     queue = object()
     queue2 = object()
     topic = "hello/world"
     topic2 = "other/world"
-    add_route(topic_to_queues, queue_to_topics, queue, topic)
-    add_route(topic_to_queues, queue_to_topics, queue, topic2)
-    add_route(topic_to_queues, queue_to_topics, queue2, topic)
-    add_route(topic_to_queues, queue_to_topics, queue2, topic2)
+    add_route(route_map, topic, queue)
+    add_route(route_map, topic2, queue)
+    add_route(route_map, topic, queue2)
+    add_route(route_map, topic2, queue2)
 
-    assert len(queue_to_topics[queue]) == 2
-    remove_route(topic_to_queues, queue_to_topics, queue, topic)
-    assert len(queue_to_topics[queue]) == 1
+    assert route_map["hello"]["world"].routes == [queue, queue2]
+    assert route_map["other"]["world"].routes == [queue, queue2]
 
-    assert queue not in topic_to_queues[topic]
-    assert queue in topic_to_queues[topic2]
-    assert queue2 in topic_to_queues[topic]
-    assert queue2 in topic_to_queues[topic2]
+    remove_route(route_map, topic, queue)
+    assert route_map["hello"]["world"].routes == [queue2]
+    assert route_map["other"]["world"].routes == [queue, queue2]
 
-    assert len(queue_to_topics[queue2]) == 2
-    remove_routes(topic_to_queues, queue_to_topics, queue2)
-    assert len(queue_to_topics[queue]) == 1
-    assert len(queue_to_topics[queue2]) == 0
+    remove_routes(route_map, queue2)
+    assert route_map["hello"]["world"].routes == []
+    assert route_map["other"]["world"].routes == [queue]
 
 
 @pytest.mark.asyncio

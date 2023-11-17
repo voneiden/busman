@@ -1,5 +1,5 @@
 import os
-from typing import TypeVar, Callable, Optional
+from typing import Callable, Optional, TypeVar
 
 T = TypeVar("T")
 
