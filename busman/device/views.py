@@ -2,11 +2,13 @@ from netfields.rest_framework import MACAddressField
 from rest_framework.exceptions import ValidationError, NotFound
 from rest_framework.fields import CharField
 from rest_framework.generics import get_object_or_404
+from rest_framework.mixins import ListModelMixin
 from rest_framework.response import Response
-from rest_framework.serializers import Serializer
+from rest_framework.serializers import Serializer, ModelSerializer
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet, GenericViewSet
 
-from device.models import Device
+from device.models import Device, Route
 
 
 class UbootRequest(Serializer):
@@ -36,3 +38,14 @@ class Ubootp(APIView):
         # get only ip field
         # d = get_object_or_404(Device, mac=mac)
         # return Response(data={"ip": d.ip})
+
+
+class RouteSerializer(ModelSerializer):
+    class Meta:
+        model = Route
+        fields = "__all__"
+
+
+class RouteView(ListModelMixin, GenericViewSet):
+    queryset = Route.objects.all()
+    serializer_class = RouteSerializer
