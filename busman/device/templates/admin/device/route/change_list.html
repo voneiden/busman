@@ -1,0 +1,5 @@
+{% extends "admin/change_list.html" %}
+{% block content %}
+    <div><a href="{% url 'bulk_edit_routes' %}">Bulk edit routes</a></div>
+    {{ block.super }}
+{% endblock %}

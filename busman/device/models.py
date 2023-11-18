@@ -14,3 +14,6 @@ class Route(Model):
 
     class Meta:
         unique_together = (("source", "sink"),)
+
+    def __str__(self):
+        return f"Route: [{self.source}] → [{self.sink}]"

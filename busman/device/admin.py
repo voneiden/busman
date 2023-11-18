@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.db import models
 from django.forms import Textarea, TextInput
+from django.utils.html import format_html
 
 from device.models import Device, Route
 
@@ -12,9 +13,12 @@ class DeviceAdmin(admin.ModelAdmin):
 
 
 class RouteAdmin(admin.ModelAdmin):
-    list_display = ("id", "source", "sink")
-    search_fields = ("id", "source", "sink")
-    ordering = ("id",)
+    # save_as = True
+    list_display = ("source", "sink")
+    list_display_links = None
+    list_editable = ("source", "sink")
+    search_fields = ("source", "sink")
+    ordering = ("source",)
 
     formfield_overrides = {
         models.TextField: {"widget": TextInput(attrs={"size": "40"})},

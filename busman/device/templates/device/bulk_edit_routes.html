@@ -1,0 +1,10 @@
+<form action="{% url 'bulk_edit_routes' %}" method="post">
+    {% csrf_token %}
+    <input type="submit" value="Save">
+    <div class="fieldWrapper">
+        {{ form.routes.errors }}
+        <label for="{{ form.routes.id_for_label }}">Routes</label>
+        {{ form.routes }}
+    </div>
+    <input type="submit" value="Save">
+</form>
