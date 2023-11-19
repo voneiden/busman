@@ -1,0 +1,45 @@
+[build-system]
+requires = [
+    "setuptools>=45",
+    "setuptools_scm[toml]>=6.2",
+    "wheel",
+    "setuptools-git-versioning<2"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ubootp-proxy"
+authors = [
+    {name = "Matti Eiden", email = "snaipperi@gmail.com"},
+]
+description = "Bus Manager / Ubootp proxy"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["ubootp", "iot"]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent"
+]
+dynamic = ["version"]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/voneiden/busman/issues/"
+"Documentation" = "https://github.com/voneiden/busman/"
+"Source Code" = "https://github.com/voneiden/busman/"
+
+[tool.setuptools-git-versioning]
+enabled = true
+dev_template = "{tag}.post{ccount}"
+
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+
+[tool.flake8]
+max-line-length = 100
+
+[tool.isort]
+profile = "black"
