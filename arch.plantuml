@@ -1,0 +1,34 @@
+@startuml
+database Postgres
+component Busman {
+    portout "v1/routes/"
+    port "v1/ubootp/"
+}
+
+package Busrouter {
+    Component Protocol
+    Component Router
+    Component Mapper
+
+    Protocol --> Router : Queue
+    Router --> Protocol
+    Router --> Mapper : Queue
+    Mapper --> Router
+}
+component "Ubootp Proxy"
+
+
+
+Postgres -> Busman
+"Ubootp Proxy" -down-> "v1/ubootp/"
+Mapper --> "v1/routes/"
+
+
+component Device {
+
+}
+
+Device -> "Ubootp Proxy" : "(1) UDP\nMac -> IP"
+Device -> "Protocol" : "(2) TCP\nPubSub"
+
+@enduml
