@@ -12,3 +12,5 @@ This monorepo (I hate monorepos, but here we are) implements three projects:
 * Ubootp proxy - Broadcast/Multicast listener with a very simple protocol. 
   Returns IP configuration for matching MAC addresses.
 * Busrouter - A very lightweight TCP pubsub server/broker. Very fast.
+
+![image](https://github.com/voneiden/busman/assets/437576/b4775653-a0fc-4a70-b17a-adee1da19126)
