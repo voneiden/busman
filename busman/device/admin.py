@@ -1,15 +1,24 @@
 from django.contrib import admin
 from django.db import models
-from django.forms import Textarea, TextInput
-from django.utils.html import format_html
+from django.forms import TextInput
 
-from device.models import Device, Route
+from device.models import Device, Route, TWIModule
 
 
 class DeviceAdmin(admin.ModelAdmin):
     list_display = ("name", "mac", "ip")
     search_fields = ("name", "mac", "ip")
     ordering = ("name",)
+
+
+admin.site.register(Device, DeviceAdmin)
+
+
+class TWIModuleAdmin(admin.ModelAdmin):
+    pass
+
+
+admin.site.register(TWIModule, TWIModuleAdmin)
 
 
 class RouteAdmin(admin.ModelAdmin):
@@ -25,5 +34,4 @@ class RouteAdmin(admin.ModelAdmin):
     }
 
 
-admin.site.register(Device, DeviceAdmin)
 admin.site.register(Route, RouteAdmin)
