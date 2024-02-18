@@ -7,7 +7,9 @@ from asyncio import (
     StreamReader,
     StreamWriter,
 )
+from typing import Optional, Coroutine
 
+from busrouter import settings
 from busrouter.mapper import mapper
 from busrouter.router import (
     NokResponse,
@@ -24,6 +26,7 @@ from busrouter.router import (
     UnsubscribeRequest,
     route,
 )
+from busrouter.utils import set_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -71,37 +74,52 @@ class CloseConnection(Exception):
     pass
 
 
+async def ping_task(response_queue: ResponseQueue):
+    await asyncio.sleep(settings.PING_INTERVAL)
+    await response_queue.put(PingResponse())
+
+
 async def handle_device_request(
-    request_queue: RequestQueue, response_queue: ResponseQueue, reader
+    request_queue: RequestQueue,
+    response_queue: ResponseQueue,
+    reader,
+    tg: asyncio.TaskGroup,
 ):
-    while 1:
-        cmd = await reader.readexactly(1)
-        logging.debug(f"Recv cmd: {cmd}")
-        match cmd:
-            case Request.SUBSCRIBE:
-                topic = await read_length_prefixed_value(reader)
-                await request_queue.put(
-                    (response_queue, SubscribeRequest(topic.decode("ascii")))
-                )
-            case Request.UNSUBSCRIBE:
-                topic = await read_length_prefixed_value(reader)
-                await request_queue.put(
-                    (response_queue, UnsubscribeRequest(topic.decode("ascii")))
-                )
-            case Request.PUBLISH:
-                topic = await read_length_prefixed_value(reader)
-                message = await read_length_prefixed_value(reader)
-                await request_queue.put(
-                    (
-                        response_queue,
-                        PublishRequest(topic.decode("ascii"), message),
+    _ping_task: Optional[asyncio.Task] = None
+    async with asyncio.timeout(settings.TIMEOUT) as timeout:
+        while 1:
+            cmd = await reader.readexactly(1)
+            logging.debug(f"Recv cmd: {cmd}")
+            match cmd:
+                case Request.SUBSCRIBE:
+                    topic = await read_length_prefixed_value(reader)
+                    await request_queue.put(
+                        (response_queue, SubscribeRequest(topic.decode("ascii")))
                     )
-                )
-            case Request.PONG:
-                await request_queue.put((response_queue, PongRequest()))
-            case _:
-                logging.warning("Bad command, disconnect")
-                raise CloseConnection()
+                case Request.UNSUBSCRIBE:
+                    topic = await read_length_prefixed_value(reader)
+                    await request_queue.put(
+                        (response_queue, UnsubscribeRequest(topic.decode("ascii")))
+                    )
+                case Request.PUBLISH:
+                    topic = await read_length_prefixed_value(reader)
+                    message = await read_length_prefixed_value(reader)
+                    await request_queue.put(
+                        (
+                            response_queue,
+                            PublishRequest(topic.decode("ascii"), message),
+                        )
+                    )
+                case b"!":
+                    set_timeout(timeout, settings.TIMEOUT)
+                    if _ping_task is not None and not _ping_task.done():
+                        _ping_task.cancel()
+                    _ping_task = tg.create_task(ping_task(response_queue))
+                    await request_queue.put((response_queue, PongRequest()))
+
+                case _:
+                    logging.warning("Bad command, disconnect")
+                    raise CloseConnection()
 
 
 def handle_device_factory(request_queue: RequestQueue):
@@ -111,7 +129,7 @@ def handle_device_factory(request_queue: RequestQueue):
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(handle_device_response(response_queue, writer))
                 tg.create_task(
-                    handle_device_request(request_queue, response_queue, reader)
+                    handle_device_request(request_queue, response_queue, reader, tg)
                 )
         except* CloseConnection:
             pass
@@ -158,7 +176,8 @@ async def main():
     #    await server.serve_forever()
 
 
-try:
-    asyncio.run(main())
-except KeyboardInterrupt:
-    print("Good bye")
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Good bye")

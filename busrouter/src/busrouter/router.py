@@ -257,4 +257,10 @@ async def route(request_queue: RequestQueue):
                 else:
                     await response_queue.put(OkResponse())
 
+            case PongRequest():
+                pass
+
+            case _:
+                raise RuntimeError(f"Unhandled request type: {request}")
+
         request_queue.task_done()
